@@ -20,3 +20,10 @@ export function googleAuth(): OAuth2Client {
   client.setCredentials({ refresh_token });
   return client;
 }
+
+/** True when Google rejected our credentials (expired/revoked refresh token, bad client), so retrying will not help. */
+export function isGoogleAuthError(e: unknown): boolean {
+  const err = e as { message?: string; code?: number | string; status?: number; response?: { status?: number; data?: { error?: string } } };
+  const text = `${err?.message ?? ''} ${err?.response?.data?.error ?? ''}`;
+  return /invalid_grant|invalid_client|unauthorized_client|invalid_rapt/.test(text) || [err?.code, err?.status, err?.response?.status].includes(401);
+}

@@ -11,23 +11,28 @@ on:
         default: proof
   issue_comment:
     types: [created]
-permissions:
-  issues: write
-  contents: write
-  pull-requests: write
-  id-token: write
-concurrency:
-  group: render-${{ github.event.issue.number || inputs.issue }}
-  cancel-in-progress: false
+# Least privilege: every job declares its own permissions.
+permissions: {}
+# No workflow-level concurrency: every comment starts a run, and a queued run
+# would cancel an older pending one (losing an /approve). Only real commands reach
+# the render/fix jobs, which serialise per issue.
 jobs:
   route:
-    if: github.event_name == 'issue_comment'
+    if: >-
+      github.event_name == 'issue_comment' &&
+      !github.event.issue.pull_request &&
+      contains(github.event.issue.labels.*.name, 'order') &&
+      github.event.comment.author_association == 'OWNER'
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
     outputs:
       command: ${{ steps.route.outputs.command }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -38,42 +43,70 @@ jobs:
 
   render:
     needs: route
-    if: always() && (github.event_name == 'workflow_dispatch' || needs.route.outputs.command == 'approve')
+    if: >-
+      !cancelled() &&
+      (github.event_name == 'workflow_dispatch' || needs.route.outputs.command == 'approve')
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: read
+      issues: write
+    concurrency:
+      group: render-${{ github.event.issue.number || inputs.issue }}
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/setup-render
-      - run: npx tsx scripts/render-job.ts "${{ github.event.issue.number || inputs.issue }}" "${{ github.event_name == 'workflow_dispatch' && inputs.mode || 'final' }}"
+      - run: npx tsx scripts/render-job.ts "$ISSUE" "$MODE"
         env:
+          ISSUE: ${{ github.event.issue.number || inputs.issue }}
+          MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.mode || 'final' }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GOOGLE_OAUTH_JSON: ${{ secrets.GOOGLE_OAUTH_JSON }}
 
+  # Data-only fix. The agent reads untrusted customer text, so it gets read tools
+  # plus three commands pinned to this issue: set-order-data (validated, keeps
+  # extras/dates/order number), a comment, and the needs-template-fix label.
+  # Template changes are done by a human in a PR.
   fix:
     needs: route
     if: needs.route.outputs.command == 'fix'
     runs-on: ubuntu-latest
     timeout-minutes: 40
+    permissions:
+      contents: read
+      issues: write
+      id-token: write
+    concurrency:
+      group: render-${{ github.event.issue.number }}
+      cancel-in-progress: false
+    env:
+      ISSUE: ${{ github.event.issue.number }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/setup-render
       - id: before
-        run: echo "hash=$(gh issue view ${{ github.event.issue.number }} --json body -q .body | sha256sum | cut -c1-16)" >> "$GITHUB_OUTPUT"
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build prompt
+        run: echo "hash=$(gh issue view "$ISSUE" --json body -q .body | sha256sum | cut -c1-16)" >> "$GITHUB_OUTPUT"
+      - name: Build prompt and tool list
         id: prompt
         run: |
+          d="PROMPT_$(openssl rand -hex 16)"
           {
-            echo 'text<<PROMPT_EOF'
+            echo "text<<$d"
             cat .github/prompts/fix.md
             echo
-            echo "Numer Issue: ${{ github.event.issue.number }}"
+            echo "Numer Issue: $ISSUE"
             echo "Poprawka (od właściciela):"
             echo '<fix>'
             jq -r '.comment.body' "$GITHUB_EVENT_PATH" | sed '1s|^/fix:[[:space:]]*||'
             echo '</fix>'
-            echo 'PROMPT_EOF'
+            echo "$d"
+            echo "tools=Read,Glob,Grep,Bash(gh issue view ${ISSUE}:*),Bash(gh issue comment ${ISSUE}:*),Bash(gh issue edit ${ISSUE} --add-label needs-template-fix),Bash(npx tsx scripts/set-order-data.ts ${ISSUE}:*)"
           } >> "$GITHUB_OUTPUT"
       - uses: anthropics/claude-code-action@v1
         with:
@@ -81,20 +114,15 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           prompt: ${{ steps.prompt.outputs.text }}
           claude_args: >-
-            --max-turns 30
-            --allowedTools "Read,Glob,Grep,Edit,Write,Bash(gh issue view:*),Bash(gh issue comment:*),Bash(gh issue edit:*),Bash(gh pr create:*),Bash(git checkout:*),Bash(git add:*),Bash(git commit:*),Bash(git push:*),Bash(npx tsx scripts/set-order-data.ts:*),Bash(npm test:*),Bash(npx tsx scripts/render-cli.ts:*)"
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+            --max-turns 20
+            --allowedTools "${{ steps.prompt.outputs.tools }}"
       - id: after
         run: |
-          echo "hash=$(gh issue view ${{ github.event.issue.number }} --json body -q .body | sha256sum | cut -c1-16)" >> "$GITHUB_OUTPUT"
-          echo "labels=$(gh issue view ${{ github.event.issue.number }} --json labels -q '[.labels[].name] | join(",")')" >> "$GITHUB_OUTPUT"
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          echo "hash=$(gh issue view "$ISSUE" --json body -q .body | sha256sum | cut -c1-16)" >> "$GITHUB_OUTPUT"
+          echo "labels=$(gh issue view "$ISSUE" --json labels -q '[.labels[].name] | join(",")')" >> "$GITHUB_OUTPUT"
       - name: New proof after a data fix
         if: steps.before.outputs.hash != steps.after.outputs.hash && !contains(steps.after.outputs.labels, 'needs-template-fix')
-        run: npx tsx scripts/render-job.ts "${{ github.event.issue.number }}" proof
+        run: npx tsx scripts/render-job.ts "$ISSUE" proof
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GOOGLE_OAUTH_JSON: ${{ secrets.GOOGLE_OAUTH_JSON }}

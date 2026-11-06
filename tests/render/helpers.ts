@@ -17,6 +17,9 @@ export async function compareSnapshot(png: string, name: string): Promise<number
   const dir = path.resolve(import.meta.dirname, '../__snapshots__');
   const ref = path.join(dir, `${name}.png`);
   const exists = await access(ref).then(() => true, () => false);
+  if (!exists && process.env.CI && process.env.UPDATE_SNAPSHOTS !== '1') {
+    throw new Error(`missing snapshot ${name}.png: generate it locally with UPDATE_SNAPSHOTS=1 and commit it`);
+  }
   if (!exists || process.env.UPDATE_SNAPSHOTS === '1') {
     await mkdir(dir, { recursive: true });
     await writeFile(ref, await readFile(png));

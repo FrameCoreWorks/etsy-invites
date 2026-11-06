@@ -5,3 +5,4 @@ out/
 *.log
 .env
 listings/*/media/
+.etsy-refresh-token

@@ -22,7 +22,9 @@ export function orderToIssue(o: Order, errors: ValidationError[]): IssueDraft {
   if (o.extras.illustration) labels.push('illustration');
   if (errors.length) labels.push('needs-info');
 
-  const rows = Object.entries(o.data).map(([k, v]) => `| ${k} | ${v.replace(/\|/g, '\\|')} |`);
+  // Customer text: one table line per field, no pipes or backticks that could break the layout or the data fence.
+  const cell = (v: string) => v.replace(/\r?\n/g, ' ').replace(/([|`])/g, '\\$1');
+  const rows = Object.entries(o.data).map(([k, v]) => `| ${k} | ${cell(v)} |`);
   const body = [
     `**Zamówienie Etsy:** ${o.order}  `,
     `**Szablon:** \`${o.slug}\`  `,
@@ -45,9 +47,10 @@ export function orderToIssue(o: Order, errors: ValidationError[]): IssueDraft {
 }
 
 export function parseIssueBody(body: string): Order {
-  const start = body.indexOf(FENCE);
+  // The real fence is the last one on its own line; JSON inside it cannot contain raw newlines.
+  const start = body.replace(/\r\n/g, '\n').lastIndexOf(`\n${FENCE}\n`);
   if (start < 0) throw new Error('issue body has no order-data block');
-  const rest = body.slice(start + FENCE.length);
+  const rest = body.replace(/\r\n/g, '\n').slice(start + FENCE.length + 1);
   const end = rest.indexOf('\n```');
   return JSON.parse(rest.slice(0, end));
 }
