@@ -7,7 +7,8 @@ import { listTemplates } from '../../src/template/schema';
 import { frameAt, compareSnapshot } from './helpers';
 
 const TODAY = new Date('2026-11-06T12:00:00Z');
-const SNAPSHOT_SEC = 8; // all text elements visible
+/** Seconds where each text scene is fully visible: save the date shows everything at 8 s, invitations have 4 scenes. */
+const snapshotSecs = (durationSec: number) => (durationSec >= 25 ? [3.5, 10, 16, 23] : [8]);
 
 function exampleData(fields: { key: string; example: string }[]) {
   return Object.fromEntries(fields.map((f) => [f.key, f.example]));
@@ -40,8 +41,11 @@ describe.each(templates.map((t) => [t.slug, t] as const))('%s', (slug, t) => {
 
   it('worst-case text matches snapshot', async () => {
     const r = await render({ slug, data: worstData(t.fields), mode: 'final', format: '9x16', outDir: path.join(out, 'worst'), today: TODAY });
-    const png = await frameAt(r.file, SNAPSHOT_SEC, path.join(out, `${slug}-worst.png`));
-    expect(await compareSnapshot(png, `${slug}-worst`)).toBeLessThan(0.01);
+    for (const [i, sec] of snapshotSecs(t.durationSec).entries()) {
+      const name = i === 0 ? `${slug}-worst` : `${slug}-worst-${i + 1}`;
+      const png = await frameAt(r.file, sec, path.join(out, `${name}.png`));
+      expect(await compareSnapshot(png, name), name).toBeLessThan(0.01);
+    }
   }, 600_000);
 
   it('invalid data throws ValidationFailed before rendering', async () => {
