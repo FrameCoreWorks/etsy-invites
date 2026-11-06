@@ -1,0 +1,28 @@
+name: render-benchmark
+on:
+  pull_request:
+    types: [labeled]
+  workflow_dispatch:
+    inputs:
+      slug:
+        description: Template slug
+        required: true
+        default: wedding-botanical-std
+      runs:
+        description: Runs per mode (median is reported)
+        required: true
+        default: '3'
+jobs:
+  benchmark:
+    if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'benchmark'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-render
+      - name: Benchmark
+        run: npx tsx scripts/benchmark.ts "${{ inputs.slug || 'wedding-botanical-std' }}" --runs "${{ inputs.runs || '3' }}" --out out | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-${{ inputs.slug || 'wedding-botanical-std' }}
+          path: out/*.mp4

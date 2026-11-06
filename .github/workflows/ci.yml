@@ -1,0 +1,24 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-render
+      - run: npm run typecheck
+      - run: npm test
+      - name: Snapshot frames on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: render-test-output
+          path: /tmp/render-*/**/*.png
+          if-no-files-found: ignore

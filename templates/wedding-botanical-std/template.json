@@ -1,0 +1,13 @@
+{
+  "slug": "wedding-botanical-std",
+  "engine": "remotion",
+  "durationSec": 15,
+  "formats": ["9x16", "16x9"],
+  "fields": [
+    { "key": "names", "label": "Couple names", "type": "text", "maxLength": 40, "required": true, "example": "Emma & Liam" },
+    { "key": "date", "label": "Wedding date", "type": "date", "required": true, "example": "2027-06-12" },
+    { "key": "city", "label": "City", "type": "text", "maxLength": 40, "required": true, "example": "Charleston, SC" },
+    { "key": "message", "label": "Short message (optional)", "type": "text", "maxLength": 60, "required": false, "example": "We can't wait to celebrate with you" },
+    { "key": "accent", "label": "Leaf color (optional)", "type": "color", "required": false, "example": "#8a9a5b" }
+  ]
+}

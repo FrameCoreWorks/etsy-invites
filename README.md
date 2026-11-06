@@ -6,3 +6,11 @@ Animowane zaproszenia wideo FrameCore Works na Etsy.
 - Plan fali 1: `docs/superpowers/plans/2026-11-06-fala-1-plan.md`
 - Kontekst decyzji: `docs/HANDOVER.md`
 - Research rynku: `docs/research/2026-11-06-etsy-rynek.md`
+
+## Uruchomienie
+
+```
+npm ci
+npm test
+npm run typecheck
+```

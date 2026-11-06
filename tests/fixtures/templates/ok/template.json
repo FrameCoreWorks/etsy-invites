@@ -1,0 +1,11 @@
+{
+  "slug": "ok",
+  "engine": "remotion",
+  "durationSec": 15,
+  "formats": ["9x16", "16x9"],
+  "fields": [
+    { "key": "names", "label": "Couple names", "type": "text", "maxLength": 40, "required": true, "example": "Emma & Liam" },
+    { "key": "date", "label": "Wedding date", "type": "date", "required": true, "example": "2027-06-12" },
+    { "key": "accent", "label": "Accent color", "type": "color", "required": false, "example": "#8a9a5b" }
+  ]
+}
