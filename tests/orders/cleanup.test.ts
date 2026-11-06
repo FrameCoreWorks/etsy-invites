@@ -51,4 +51,25 @@ describe('runCleanup', () => {
     expect(await runCleanup(deps, NOW)).toEqual({ scrubbed: 1 });
     expect(state.labels.get(1)).toEqual(['scrubbed']);
   });
+
+  it('replaces the issue with a fresh tombstone when it can delete issues, so edit history goes too', async () => {
+    const { deps, state } = setup([issue(1, 31)]);
+    const tomb: { title: string; body: string }[] = [];
+    const deleted: number[] = [];
+    deps.createTombstone = async (title, body) => void tomb.push({ title, body });
+    deps.deleteIssue = async (n) => void deleted.push(n);
+    expect(await runCleanup(deps, NOW)).toEqual({ scrubbed: 1 });
+    expect(tomb[0].title).toBe(`#${order.order} ${order.slug}`);
+    expect(tomb[0].body).not.toContain('Emma');
+    expect(responseIdsFromBody(tomb[0].body)).toEqual(['r1', 'r2']);
+    expect(deleted).toEqual([1]);
+    expect(state.bodies.size).toBe(0);
+  });
+  it('raises an ops alert when Google rejects the token', async () => {
+    const { deps } = setup([issue(1, 40)], new Error('invalid_grant'));
+    const alerts: string[] = [];
+    deps.opsAlert = async (t) => void alerts.push(t);
+    await expect(runCleanup(deps, NOW)).rejects.toThrow('invalid_grant');
+    expect(alerts).toHaveLength(1);
+  });
 });
