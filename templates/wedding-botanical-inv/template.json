@@ -1,0 +1,65 @@
+{
+  "slug": "wedding-botanical-inv",
+  "engine": "remotion",
+  "durationSec": 25,
+  "formats": [
+    "9x16",
+    "16x9"
+  ],
+  "fields": [
+    {
+      "key": "names",
+      "label": "Couple names",
+      "type": "text",
+      "maxLength": 40,
+      "required": true,
+      "example": "Emma & Liam"
+    },
+    {
+      "key": "date",
+      "label": "Wedding date",
+      "type": "date",
+      "required": true,
+      "example": "2027-06-12"
+    },
+    {
+      "key": "time",
+      "label": "Ceremony time",
+      "type": "text",
+      "maxLength": 10,
+      "required": true,
+      "example": "4:30 PM"
+    },
+    {
+      "key": "venue",
+      "label": "Venue name",
+      "type": "text",
+      "maxLength": 50,
+      "required": true,
+      "example": "Magnolia Plantation"
+    },
+    {
+      "key": "address",
+      "label": "Venue address",
+      "type": "text",
+      "maxLength": 80,
+      "required": true,
+      "example": "3550 Ashley River Rd, Charleston, SC"
+    },
+    {
+      "key": "rsvp",
+      "label": "RSVP line",
+      "type": "text",
+      "maxLength": 80,
+      "required": true,
+      "example": "RSVP by May 1 at emmaandliam.com"
+    },
+    {
+      "key": "accent",
+      "label": "Accent color (optional)",
+      "type": "color",
+      "required": false,
+      "example": "#8a9a5b"
+    }
+  ]
+}
