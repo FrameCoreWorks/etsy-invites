@@ -1,0 +1,20 @@
+name: setup-render
+description: Node 22, FFmpeg, npm deps and Remotion browser
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 22
+        cache: npm
+    - name: FFmpeg
+      shell: bash
+      run: |
+        if ! command -v ffmpeg >/dev/null; then sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg; fi
+        ffmpeg -version | head -1
+    - name: npm ci
+      shell: bash
+      run: npm ci
+    - name: Remotion browser
+      shell: bash
+      run: npx remotion browser ensure
