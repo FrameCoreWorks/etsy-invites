@@ -13,7 +13,9 @@ on:
     types: [created]
 permissions:
   issues: write
-  contents: read
+  contents: write
+  pull-requests: write
+  id-token: write
 concurrency:
   group: render-${{ github.event.issue.number || inputs.issue }}
   cancel-in-progress: false
@@ -43,6 +45,56 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-render
       - run: npx tsx scripts/render-job.ts "${{ github.event.issue.number || inputs.issue }}" "${{ github.event_name == 'workflow_dispatch' && inputs.mode || 'final' }}"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GOOGLE_OAUTH_JSON: ${{ secrets.GOOGLE_OAUTH_JSON }}
+
+  fix:
+    needs: route
+    if: needs.route.outputs.command == 'fix'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-render
+      - id: before
+        run: echo "hash=$(gh issue view ${{ github.event.issue.number }} --json body -q .body | sha256sum | cut -c1-16)" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build prompt
+        id: prompt
+        run: |
+          {
+            echo 'text<<PROMPT_EOF'
+            cat .github/prompts/fix.md
+            echo
+            echo "Numer Issue: ${{ github.event.issue.number }}"
+            echo "Poprawka (od właściciela):"
+            echo '<fix>'
+            jq -r '.comment.body' "$GITHUB_EVENT_PATH" | sed '1s|^/fix:[[:space:]]*||'
+            echo '</fix>'
+            echo 'PROMPT_EOF'
+          } >> "$GITHUB_OUTPUT"
+      - uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          prompt: ${{ steps.prompt.outputs.text }}
+          claude_args: >-
+            --max-turns 30
+            --allowedTools "Read,Glob,Grep,Edit,Write,Bash(gh issue view:*),Bash(gh issue comment:*),Bash(gh issue edit:*),Bash(gh pr create:*),Bash(git checkout:*),Bash(git add:*),Bash(git commit:*),Bash(git push:*),Bash(npx tsx scripts/set-order-data.ts:*),Bash(npm test:*),Bash(npx tsx scripts/render-cli.ts:*)"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - id: after
+        run: |
+          echo "hash=$(gh issue view ${{ github.event.issue.number }} --json body -q .body | sha256sum | cut -c1-16)" >> "$GITHUB_OUTPUT"
+          echo "labels=$(gh issue view ${{ github.event.issue.number }} --json labels -q '[.labels[].name] | join(",")')" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: New proof after a data fix
+        if: steps.before.outputs.hash != steps.after.outputs.hash && !contains(steps.after.outputs.labels, 'needs-template-fix')
+        run: npx tsx scripts/render-job.ts "${{ github.event.issue.number }}" proof
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GOOGLE_OAUTH_JSON: ${{ secrets.GOOGLE_OAUTH_JSON }}
