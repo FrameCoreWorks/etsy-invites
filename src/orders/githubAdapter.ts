@@ -8,8 +8,9 @@ export function intakeGithub(gh: Octokit): IntakeGithub {
   const orderIssues = () => gh.paginate(gh.issues.listForRepo, { ...ctx, labels: 'order', state: 'all', per_page: 100 });
   return {
     async findOrderIssue(order) {
-      const hit = (await orderIssues()).find((i) => i.title.startsWith(`#${order} `));
-      return hit ? { number: hit.number, body: hit.body ?? '' } : null;
+      const isScrubbed = (i: { labels: (string | { name?: string })[] }) => i.labels.some((l) => (typeof l === 'string' ? l : l.name) === 'scrubbed');
+      const hit = (await orderIssues()).find((i) => i.title.startsWith(`#${order} `) && !isScrubbed(i));
+      return hit ? { number: hit.number, body: hit.body ?? '', state: hit.state } : null;
     },
     async processedResponseIds() {
       const ids = new Set<string>();
@@ -27,6 +28,9 @@ export function intakeGithub(gh: Octokit): IntakeGithub {
     },
     async comment(n, body) {
       await gh.issues.createComment({ ...ctx, issue_number: n, body });
+    },
+    async reopen(n) {
+      await gh.issues.update({ ...ctx, issue_number: n, state: 'open' });
     },
     opsAlert: (title, detail) => opsAlert(gh, title, detail),
   };
@@ -55,5 +59,6 @@ export function renderGithub(gh: Octokit): RenderGithub {
     async removeLabel(n, label) {
       await gh.issues.removeLabel({ ...ctx, issue_number: n, name: label });
     },
+    opsAlert: (title, detail) => opsAlert(gh, title, detail),
   };
 }

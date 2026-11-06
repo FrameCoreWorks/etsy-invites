@@ -2,12 +2,14 @@ import { ValidationFailed, type RenderOptions, type RenderResult } from '../../r
 import { customerMessage } from '../template/validate';
 import type { Format } from '../template/schema';
 import { parseIssueBody, type Order } from './issue';
+import { isGoogleAuthError } from '../google/auth';
 
 export interface RenderGithub {
   getIssue(n: number): Promise<{ body: string; labels: string[]; state: string }>;
   comment(n: number, body: string): Promise<void>;
   addLabels(n: number, labels: string[]): Promise<void>;
   removeLabel(n: number, label: string): Promise<void>;
+  opsAlert(title: string, detail: string): Promise<void>;
 }
 
 export type RenderJobDeps = {
@@ -30,7 +32,15 @@ async function renderWithRetry(deps: RenderJobDeps, opts: RenderOptions): Promis
 
 async function guarded(n: number, deps: RenderJobDeps, work: (o: Order) => Promise<void>): Promise<void> {
   const issue = await deps.github.getIssue(n);
-  if (issue.state !== 'open' || issue.labels.includes('needs-info') || !issue.labels.includes('order')) return;
+  if (!issue.labels.includes('order')) return;
+  if (issue.state !== 'open') {
+    await deps.github.comment(n, 'Pominięte: zamówienie jest zamknięte. Otwórz Issue i powtórz komendę.');
+    return;
+  }
+  if (issue.labels.includes('needs-info')) {
+    await deps.github.comment(n, 'Pominięte: zamówienie ma etykietę needs-info. Popraw dane (`/fix:`) albo zdejmij etykietę i powtórz komendę.');
+    return;
+  }
   const o = parseIssueBody(issue.body);
   try {
     await work(o);
@@ -39,6 +49,12 @@ async function guarded(n: number, deps: RenderJobDeps, work: (o: Order) => Promi
     if (e instanceof ValidationFailed) {
       await deps.github.addLabels(n, ['needs-info']);
       await deps.github.comment(n, `Dane nie przechodzą walidacji. Wiadomość do klienta:\n\n\`\`\`text\n${customerMessage(e.errors)}\n\`\`\``);
+      return;
+    }
+    if (isGoogleAuthError(e)) {
+      await deps.github.opsAlert('Google: token odrzucony', `Issue #${n}: ${String((e as Error).message ?? e)}. Zaloguj się ponownie (docs/setup-google.md) i zaktualizuj sekret GOOGLE_OAUTH_JSON.`);
+      await deps.github.addLabels(n, ['render-failed']);
+      await deps.github.comment(n, 'Google odrzucił logowanie (Drive). Szczegóły w Issue ops-alert. Po odnowieniu tokenu powtórz komendę.');
       return;
     }
     await deps.github.addLabels(n, ['render-failed']);

@@ -6,15 +6,24 @@ import { orderToIssue, parseIssueBody, type IssueDraft, type Order } from './iss
 export type FormResponse = { responseId: string; slug: string; submittedAt: string; answers: Record<string, string> };
 
 export interface IntakeGithub {
-  findOrderIssue(order: string): Promise<{ number: number; body: string } | null>;
+  /** The live issue for an order number; scrubbed tombstones are not returned. */
+  findOrderIssue(order: string): Promise<{ number: number; body: string; state: string } | null>;
   processedResponseIds(): Promise<Set<string>>;
   createIssue(i: IssueDraft): Promise<number>;
   updateIssue(n: number, i: Partial<IssueDraft>): Promise<void>;
   comment(n: number, body: string): Promise<void>;
+  reopen(n: number): Promise<void>;
   opsAlert(title: string, detail: string): Promise<void>;
 }
 
-export type IntakeDeps = { github: IntakeGithub; listResponses: () => Promise<FormResponse[]>; now?: Date; templatesRoot?: string };
+export type IntakeDeps = {
+  github: IntakeGithub;
+  listResponses: () => Promise<FormResponse[]>;
+  /** Called right after a valid order issue is created or updated (starts the proof render). */
+  onReady?: (issue: number) => Promise<void>;
+  now?: Date;
+  templatesRoot?: string;
+};
 
 const HOUR = 3600_000;
 
@@ -53,20 +62,41 @@ export async function runIntake(deps: IntakeDeps): Promise<{ created: number; up
   let updated = 0;
   for (const r of [...responses].sort((a, b) => a.submittedAt.localeCompare(b.submittedAt))) {
     if (seen.has(r.responseId)) continue;
-    const { order, errors } = await toOrder(r, deps.templatesRoot, deps.now);
-    const existing = ORDER_REGEX.test(order.order) ? await github.findOrderIssue(order.order) : null;
-    if (existing) {
-      const prev = parseIssueBody(existing.body);
-      const merged: Order = { ...order, responseIds: [...prev.responseIds, r.responseId] };
-      const draft = orderToIssue(merged, errors);
-      await github.updateIssue(existing.number, { body: draft.body, labels: draft.labels });
-      await github.comment(existing.number, `Klient wysłał formularz ponownie (${r.submittedAt}). Nowe dane:\n\n${draft.body.split('\n\nKomendy:')[0]}`);
-      updated++;
-    } else {
-      await github.createIssue(orderToIssue(order, errors));
-      created++;
+    try {
+      if ((await importResponse(deps, r)) === 'created') created++;
+      else updated++;
+      seen.add(r.responseId);
+    } catch (e) {
+      // One bad response must not block the queue; it is retried on the next run.
+      await github.opsAlert(`intake: odpowiedź ${r.responseId} nie została zaimportowana`, String((e as Error).stack ?? e));
     }
-    seen.add(r.responseId);
   }
   return { created, updated };
+}
+
+async function importResponse(deps: IntakeDeps, r: FormResponse): Promise<'created' | 'updated'> {
+  const { github } = deps;
+  const { order, errors } = await toOrder(r, deps.templatesRoot, deps.now);
+  const existing = ORDER_REGEX.test(order.order) ? await github.findOrderIssue(order.order) : null;
+  let n: number;
+  let kind: 'created' | 'updated';
+  if (existing) {
+    const prev = parseIssueBody(existing.body);
+    const merged: Order = { ...order, responseIds: [...prev.responseIds, r.responseId] };
+    const draft = orderToIssue(merged, errors);
+    await github.updateIssue(existing.number, { body: draft.body, labels: draft.labels });
+    const reopened = existing.state !== 'open';
+    if (reopened) await github.reopen(existing.number);
+    await github.comment(
+      existing.number,
+      `Klient wysłał formularz ponownie (${r.submittedAt})${reopened ? '. Zamówienie było zamknięte, otwarte ponownie' : ''}. Nowe dane:\n\n${draft.body.split('\n\nKomendy:')[0]}`,
+    );
+    n = existing.number;
+    kind = 'updated';
+  } else {
+    n = await github.createIssue(orderToIssue(order, errors));
+    kind = 'created';
+  }
+  if (errors.length === 0) await deps.onReady?.(n);
+  return kind;
 }

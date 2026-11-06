@@ -10,12 +10,13 @@ const order: Order = {
   submittedAt: '2026-11-06T10:00:00.000Z', dueAt: '2026-11-08T10:00:00.000Z', responseIds: ['r1'],
 };
 
-function setup(o: Order = order, labels?: string[]) {
+function setup(o: Order = order, labels?: string[], issueState = 'open') {
   const issue = orderToIssue(o, []);
-  const state = { labels: labels ?? issue.labels, comments: [] as string[], renders: [] as string[], uploads: [] as string[][], failures: 0 };
+  const state = { labels: labels ?? issue.labels, comments: [] as string[], renders: [] as string[], uploads: [] as string[][], failures: 0, alerts: [] as string[] };
   const deps: RenderJobDeps = {
     github: {
-      getIssue: async () => ({ body: issue.body, labels: [...state.labels], state: 'open' }),
+      getIssue: async () => ({ body: issue.body, labels: [...state.labels], state: issueState }),
+      opsAlert: async (t) => void state.alerts.push(t),
       comment: async (_n, b) => void state.comments.push(b),
       addLabels: async (_n, ls) => void state.labels.push(...ls.filter((l) => !state.labels.includes(l))),
       removeLabel: async (_n, l) => void (state.labels = state.labels.filter((x) => x !== l)),
@@ -53,10 +54,25 @@ describe('runProof', () => {
     expect(state.labels).toContain('render-failed');
     expect(state.comments.at(-1)).toContain('chrome crashed');
   });
-  it('does nothing for needs-info issues', async () => {
+  it('does not render needs-info issues and says why', async () => {
     const { deps, state } = setup(order, ['order', 'needs-info']);
     await runProof(1, deps);
     expect(state.renders).toEqual([]);
+    expect(state.comments[0]).toContain('needs-info');
+  });
+  it('does not render closed issues and says why', async () => {
+    const { deps, state } = setup(order, undefined, 'closed');
+    await runProof(1, deps);
+    expect(state.renders).toEqual([]);
+    expect(state.comments[0]).toContain('zamknięte');
+  });
+  it('raises an ops alert, not a render failure log, when the Google token is rejected', async () => {
+    const { deps, state } = setup();
+    deps.upload = async () => { throw Object.assign(new Error('invalid_grant'), { code: 400 }); };
+    await runProof(1, deps);
+    expect(state.alerts).toHaveLength(1);
+    expect(state.comments.at(-1)).toContain('Google');
+    expect(state.comments.at(-1)).not.toContain('Render nie udał się');
   });
   it('turns validation errors into needs-info with a customer message, without retry', async () => {
     const { deps, state } = setup();
