@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { chmod, writeFile } from 'node:fs/promises';
 
 export type Runner = (cmd: string, args: string[], input: string, env: NodeJS.ProcessEnv) => Promise<void>;
 
@@ -10,8 +11,14 @@ const spawnRunner: Runner = (cmd, args, input, env) =>
     p.stdin.end(input);
   });
 
-/** Etsy rotates refresh tokens; the new one replaces the ETSY_REFRESH_TOKEN repo secret. */
+/**
+ * Etsy rotates refresh tokens; the new one replaces the ETSY_REFRESH_TOKEN repo secret.
+ * A local 0600 copy (gitignored) is written first, so a failed secret update never loses it.
+ */
 export async function persistRefreshToken(token: string, env: NodeJS.ProcessEnv = process.env, run: Runner = spawnRunner): Promise<void> {
+  const backup = env.ETSY_TOKEN_BACKUP ?? '.etsy-refresh-token';
+  await writeFile(backup, token, { mode: 0o600 });
+  await chmod(backup, 0o600);
   if (!env.SECRETS_PAT) throw new Error('SECRETS_PAT is not set: cannot store the rotated Etsy refresh token');
   const repo = env.GITHUB_REPOSITORY ?? 'FrameCoreWorks/etsy-invites';
   await run('gh', ['secret', 'set', 'ETSY_REFRESH_TOKEN', '--repo', repo], token, { ...env, GH_TOKEN: env.SECRETS_PAT });
