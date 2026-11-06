@@ -2,6 +2,7 @@ import React from 'react';
 import { Composition } from 'remotion';
 import { registry } from './registry';
 import { dimensions, FPS } from './dimensions';
+import { Mockup } from './Mockup';
 
 export const Root: React.FC = () => (
   <>
@@ -18,5 +19,6 @@ export const Root: React.FC = () => (
         calculateMetadata={({ props }) => dimensions(((props as any).__format ?? '9x16'))}
       />
     ))}
+    <Composition id="listing-mockup" component={Mockup} fps={FPS} durationInFrames={1} width={2000} height={2000} defaultProps={{ kind: 'steps' as const }} />
   </>
 );

@@ -4,3 +4,4 @@ out/
 .superpowers/
 *.log
 .env
+listings/*/media/

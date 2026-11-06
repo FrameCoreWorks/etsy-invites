@@ -1,13 +1,13 @@
 import path from 'node:path';
 import { bundle } from '@remotion/bundler';
-import { renderMedia, selectComposition } from '@remotion/renderer';
+import { renderMedia, renderStill, selectComposition } from '@remotion/renderer';
 import type { Format, TemplateManifest } from '../../src/template/schema';
 import type { OrderData } from '../../src/template/validate';
 
 const ROOT = path.resolve(import.meta.dirname, '../..');
 let bundled: Promise<string> | null = null;
 
-function getBundle(): Promise<string> {
+export function getBundle(): Promise<string> {
   bundled ??= bundle({ entryPoint: path.join(ROOT, 'render/remotion/index.ts'), publicDir: path.join(ROOT, 'public') });
   return bundled;
 }
@@ -29,4 +29,10 @@ export async function renderRemotion(m: TemplateManifest, data: OrderData, forma
     browserExecutable,
     chromiumOptions: { gl: 'swangle' },
   });
+}
+
+export async function renderStillPng(id: string, inputProps: Record<string, unknown>, output: string): Promise<void> {
+  const serveUrl = await getBundle();
+  const composition = await selectComposition({ serveUrl, id, inputProps, browserExecutable });
+  await renderStill({ serveUrl, composition, inputProps, output, browserExecutable, imageFormat: 'png' });
 }

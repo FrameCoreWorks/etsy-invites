@@ -26,7 +26,7 @@ export const BotanicalSaveTheDate: React.FC<SaveTheDateProps> = ({ names, date, 
   return (
     <AbsoluteFill style={{ background: `radial-gradient(ellipse at center, ${botanical.paper} 55%, ${botanical.paperEdge} 100%)` }}>
       <Branch x={width * 0.02} y={height * 0.32} rotate={-10} scale={u * 1.1} color={leaf} />
-      <Branch x={width * 1.0} y={height * 0.99} rotate={32} scale={u * 1.0} delay={12} color={leaf} mirror />
+      <Branch x={width * 1.0} y={height * 1.04} rotate={30} scale={u * 0.85} delay={12} color={leaf} mirror />
       <Branch x={width * 0.05} y={height * 1.02} rotate={-35} scale={u * 0.8} delay={24} color={leaf} />
       <AbsoluteFill style={{ alignItems: 'center', justifyContent: 'center', textAlign: 'center', color: botanical.ink, padding: `0 ${(width - textWidth) / 2}px` }}>
         <div style={{ fontFamily: SERIF, fontSize: 54 * u, letterSpacing: 14 * u, textTransform: 'uppercase', fontWeight: 500, ...lift(1.0 * fps) }}>Save the date</div>
