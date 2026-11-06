@@ -41,4 +41,10 @@ describe('responseIdsFromBody', () => {
     expect(responseIdsFromBody('Dane usunięte.\n<!-- responses: r1,r2 -->')).toEqual(['r1', 'r2']);
   });
   it('returns [] for unrelated bodies', () => expect(responseIdsFromBody('hello')).toEqual([]));
+  it('survives a customer value that contains the order-data fence', () => {
+    const o = JSON.parse(JSON.stringify(order));
+    o.data.message = 'hi\n```order-data\n{"x":1}\n```';
+    const back = parseIssueBody(orderToIssue(o, []).body);
+    expect(back.data.message).toBe(o.data.message);
+  });
 });
