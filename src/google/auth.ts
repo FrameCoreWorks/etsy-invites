@@ -1,14 +1,22 @@
-import { GoogleAuth } from 'google-auth-library';
+import { OAuth2Client } from 'google-auth-library';
 
+/**
+ * Kamil's own Google account via OAuth refresh token (GOOGLE_OAUTH_JSON = {"client_id","client_secret","refresh_token"}).
+ * Not a service account: service accounts have no Drive storage quota on a personal Gmail account.
+ * The OAuth app must be set to "In production" in Google Cloud, otherwise refresh tokens expire after 7 days.
+ * See docs/setup-google.md.
+ */
 export const SCOPES = [
   'https://www.googleapis.com/auth/forms.body',
   'https://www.googleapis.com/auth/forms.responses.readonly',
-  'https://www.googleapis.com/auth/drive',
+  'https://www.googleapis.com/auth/drive.file',
 ];
 
-/** Service account from GOOGLE_SA_JSON (the JSON key as a string, stored as a GitHub secret). */
-export function googleAuth(): GoogleAuth {
-  const raw = process.env.GOOGLE_SA_JSON;
-  if (!raw) throw new Error('GOOGLE_SA_JSON is not set');
-  return new GoogleAuth({ credentials: JSON.parse(raw), scopes: SCOPES });
+export function googleAuth(): OAuth2Client {
+  const raw = process.env.GOOGLE_OAUTH_JSON;
+  if (!raw) throw new Error('GOOGLE_OAUTH_JSON is not set');
+  const { client_id, client_secret, refresh_token } = JSON.parse(raw);
+  const client = new OAuth2Client({ clientId: client_id, clientSecret: client_secret });
+  client.setCredentials({ refresh_token });
+  return client;
 }

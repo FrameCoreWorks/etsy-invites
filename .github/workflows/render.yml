@@ -1,0 +1,48 @@
+name: render
+on:
+  workflow_dispatch:
+    inputs:
+      issue:
+        description: Order issue number
+        required: true
+      mode:
+        description: proof or final
+        required: true
+        default: proof
+  issue_comment:
+    types: [created]
+permissions:
+  issues: write
+  contents: read
+concurrency:
+  group: render-${{ github.event.issue.number || inputs.issue }}
+  cancel-in-progress: false
+jobs:
+  route:
+    if: github.event_name == 'issue_comment'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      command: ${{ steps.route.outputs.command }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - id: route
+        run: npx tsx scripts/route-comment.ts
+
+  render:
+    needs: route
+    if: always() && (github.event_name == 'workflow_dispatch' || needs.route.outputs.command == 'approve')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-render
+      - run: npx tsx scripts/render-job.ts "${{ github.event.issue.number || inputs.issue }}" "${{ github.event_name == 'workflow_dispatch' && inputs.mode || 'final' }}"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GOOGLE_OAUTH_JSON: ${{ secrets.GOOGLE_OAUTH_JSON }}

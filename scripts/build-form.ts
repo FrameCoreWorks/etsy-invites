@@ -1,11 +1,10 @@
 /**
  * Creates (or recreates with --force) the Google Form for a template and records it in config/forms.json.
- * Usage: GOOGLE_SA_JSON=... FORM_EDITOR_EMAIL=you@example.com npx tsx scripts/build-form.ts <slug> [--force]
+ * Usage: GOOGLE_OAUTH_JSON=... npx tsx scripts/build-form.ts <slug> [--force]
  */
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { forms } from '@googleapis/forms';
-import { drive } from '@googleapis/drive';
 import { googleAuth } from '../src/google/auth';
 import { loadTemplate } from '../src/template/schema';
 import { buildFormSpec } from '../src/orders/formMap';
@@ -32,10 +31,6 @@ const formId = created.data.formId!;
 await f.forms.batchUpdate({ formId, requestBody: { requests: toBatchRequests(spec) } });
 await f.forms.setPublishSettings({ formId, requestBody: { publishSettings: { publishState: { isPublished: true, isAcceptingResponses: true } } } });
 
-const editor = process.env.FORM_EDITOR_EMAIL;
-if (editor) {
-  await drive({ version: 'v3', auth }).permissions.create({ fileId: formId, sendNotificationEmail: false, requestBody: { role: 'writer', type: 'user', emailAddress: editor } });
-}
 const responderUri = (await f.forms.get({ formId })).data.responderUri!;
 config[slug] = { formId, responderUri };
 await writeFile(FORMS_CONFIG, JSON.stringify(config, null, 2) + '\n');

@@ -36,3 +36,24 @@ export function intakeGithub(gh: Octokit): IntakeGithub {
 export async function dispatchRender(gh: Octokit, issue: number, mode: 'proof' | 'final'): Promise<void> {
   await gh.actions.createWorkflowDispatch({ ...repoContext(), workflow_id: 'render.yml', ref: process.env.GITHUB_REF_NAME ?? 'main', inputs: { issue: String(issue), mode } });
 }
+
+import type { RenderGithub } from './renderJob';
+
+export function renderGithub(gh: Octokit): RenderGithub {
+  const ctx = repoContext();
+  return {
+    async getIssue(n) {
+      const { data } = await gh.issues.get({ ...ctx, issue_number: n });
+      return { body: data.body ?? '', state: data.state, labels: data.labels.map((l) => (typeof l === 'string' ? l : l.name ?? '')) };
+    },
+    async comment(n, body) {
+      await gh.issues.createComment({ ...ctx, issue_number: n, body });
+    },
+    async addLabels(n, labels) {
+      await gh.issues.addLabels({ ...ctx, issue_number: n, labels });
+    },
+    async removeLabel(n, label) {
+      await gh.issues.removeLabel({ ...ctx, issue_number: n, name: label });
+    },
+  };
+}
